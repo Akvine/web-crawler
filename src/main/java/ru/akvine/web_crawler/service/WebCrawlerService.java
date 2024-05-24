@@ -10,14 +10,14 @@ import ru.akvine.web_crawler.rest.dto.CrawlRequest;
 
 import java.net.MalformedURLException;
 import java.net.URL;
-import java.util.HashMap;
-import java.util.HashSet;
-import java.util.Map;
-import java.util.Set;
+import java.util.*;
+import java.util.regex.Pattern;
 
 @Service
 @Slf4j
 public class WebCrawlerService {
+
+    private final static String HTTPS_PATTERN = "(?i)^https://";
 
     public Map<Integer, Set<String>> startCrawling(CrawlRequest request) {
         String startUrl = request.getStartUrl();
@@ -25,14 +25,7 @@ public class WebCrawlerService {
         Integer maxUrls = request.getMaxUrlsInLevel();
 
         log.info("Start crawling, level = {}, start url = {}", level, startUrl);
-
-        String baseUrl;
-        try {
-            URL url = new URL(startUrl);
-            baseUrl = url.getProtocol() + "://" + url.getHost();
-        } catch (MalformedURLException e) {
-            throw new RuntimeException("Can't parse base url from start url = " + startUrl);
-        }
+        String baseUrl = extractBaseUrl(startUrl);
 
         Map<Integer, Set<String>> tree = new HashMap<>();
         tree.put(0, Set.of(startUrl));
@@ -48,8 +41,12 @@ public class WebCrawlerService {
                 }
                 Elements urls = doc.select("a[href]");
                 for (Element element : urls) {
-                    String extractedUrl = baseUrl + element.attr("href");
-                    if (tree.containsValue(extractedUrl)) {
+                    String extractedUrl = element.attr("href");
+                    if (!isFullUrl(extractedUrl)) {
+                        extractedUrl = baseUrl + extractedUrl;
+                    }
+
+                    if (contains(tree.values(), extractedUrl)) {
                         continue;
                     }
                     tree.get(i + 1).add(extractedUrl);
@@ -62,5 +59,27 @@ public class WebCrawlerService {
         }
 
         return tree;
+    }
+
+    private boolean isFullUrl(String value) {
+        return Pattern.matches(HTTPS_PATTERN, value);
+    }
+
+    private boolean contains(Collection<Set<String>> lists, String value) {
+        List<String> allValues = new ArrayList<>();
+        for (Set<String> list : lists) {
+            allValues.addAll(list);
+        }
+
+        return allValues.contains(value);
+    }
+
+    private String extractBaseUrl(String startUrl) {
+        try {
+            URL url = new URL(startUrl);
+            return url.getProtocol() + "://" + url.getHost();
+        } catch (MalformedURLException e) {
+            throw new RuntimeException("Can't parse base url from start url = " + startUrl);
+        }
     }
 }
